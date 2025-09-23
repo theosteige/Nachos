@@ -10,7 +10,9 @@ public class DLList
      * Creates an empty sorted doubly-linked list.
      */ 
     public DLList() {
-
+        this.size = 0;
+        this.first = null;  // pointer to first node
+        this.last = null;
     }
 
     /**
@@ -20,7 +22,22 @@ public class DLList
      * If no nodes exist yet, the key will be 0.
      */
     public void prepend(Object item) {
-
+        int newKey = 0;
+        if (this.first != null) {
+            newKey = first.key - 1;
+        }
+        
+        DLLElement newElement = new DLLElement(item, newKey);
+        
+        if (this.first == null) {  // Empty list
+            this.first = newElement;
+            this.last = newElement;
+        } else {  // Non-empty list
+            newElement.next = this.first;
+            this.first.prev = newElement;
+            this.first = newElement;
+        }
+        this.size++;
     }
 
     /**
@@ -30,7 +47,21 @@ public class DLList
      * @return the data stored at the head of the list or null if list empty
      */
     public Object removeHead() {
-
+        if (this.size() == 0) {
+            return null;
+        } else {
+            Object dataItem = first.data;
+            this.first = first.next;
+            
+            if (first != null) {
+                first.prev = null;
+            } else {
+                last = null;  
+            }
+            this.size--;  
+            
+            return dataItem;
+        }
     }
 
     /**
@@ -39,7 +70,8 @@ public class DLList
      * @return true iff the list is empty.
      */
     public boolean isEmpty() {
-
+        boolean isEmpty = this.size() == 0;
+        return isEmpty;
     }
 
     /**
@@ -47,7 +79,7 @@ public class DLList
      * @return
      */
     public int size(){
-
+        return this.size;
     }
 
 
@@ -55,7 +87,43 @@ public class DLList
      * Inserts item into the list in sorted order according to sortKey.
      */
     public void insert(Object item, Integer sortKey) {
-
+        DLLElement elementToInsert = new DLLElement(item, sortKey);
+    
+        if (first == null) {
+            this.first = elementToInsert;
+            this.last = elementToInsert;
+            this.size++;
+            return;
+        }
+        
+        if (sortKey <= first.key) {
+            elementToInsert.next = this.first;
+            this.first.prev = elementToInsert;
+            this.first = elementToInsert;
+            this.size++;
+            return;
+        }
+        
+        if (sortKey >= last.key) {
+            elementToInsert.prev = this.last;
+            this.last.next = elementToInsert;
+            this.last = elementToInsert;
+            this.size++;
+            return;
+        }
+        
+        DLLElement current = this.first;
+        while (current.next != null && current.next.key < sortKey) {
+            current = current.next;
+        }
+        
+        elementToInsert.next = current.next;
+        elementToInsert.prev = current;
+        if (current.next != null) {
+            current.next.prev = elementToInsert;
+        }
+        current.next = elementToInsert;
+        this.size++;
     }
 
 
@@ -65,7 +133,23 @@ public class DLList
      * @return list elements in order
      */
     public String toString() {
-
+        if (this.size() == 0) {
+            return "()";
+        } else {
+            String toRet = "(";
+            DLLElement current = this.first;
+            boolean isFirst = true;
+            while (current != null) {
+                if (!isFirst) {
+                    toRet = toRet + " ";
+                }
+                toRet = toRet + current.toString();
+                isFirst = false;
+                current = current.next;
+            }
+            toRet = toRet + ")";
+            return toRet;
+        }
     }
 
     /**
@@ -74,7 +158,23 @@ public class DLList
      * @return list elements in backwards order
      */
     public String reverseToString(){
-
+        if (this.size() == 0) {
+            return "()";
+        } else {
+            String toRet = "(";
+            DLLElement current = this.last;
+            boolean isFirst = true;
+            while (current != null) {
+                if (!isFirst) {
+                    toRet = toRet + " ";
+                }
+                toRet = toRet + current.toString();
+                isFirst = false;
+                current = current.prev;
+            }
+            toRet = toRet + ")";
+            return toRet;
+        }
     }
 
     /**
