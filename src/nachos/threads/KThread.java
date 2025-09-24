@@ -228,6 +228,20 @@ public class KThread {
     }
 
     /**
+     * Conditionally yield based on the oughtToYield array and execution count.
+     * This method tracks how many times it has been executed across all threads
+     * and yields if oughtToYield[numTimesBefore] is true.
+     */
+    public static void yieldIfOughtTo() {
+        if (numTimesBefore < oughtToYield.length && oughtToYield[numTimesBefore]) {
+            numTimesBefore++;
+            KThread.yield();
+        } else {
+            numTimesBefore++;
+        }
+    }
+
+    /**
      * Relinquish the CPU, because the current thread has either finished or it
      * is blocked. This thread must be the current thread.
      *
@@ -396,6 +410,53 @@ public class KThread {
 
 	private int which;
     }
+    
+    private static class DLListTest implements Runnable {
+	private static DLList sharedList = new DLList();
+	private String label;
+	private int from;
+	private int to;
+	private int step;
+	
+	DLListTest(String label, int from, int to, int step) {
+	    this.label = label;
+	    this.from = from;
+	    this.to = to;
+	    this.step = step;
+	}
+	
+	/**
+	 * Prepends multiple nodes to a shared doubly-linked list. For each
+	 * integer in the range from...to (inclusive), make a string
+	 * concatenating label with the integer, and prepend a new node
+	 * containing that data (that's data, not key). For example,
+	 * countDown("A",8,6,1) means prepend three nodes with the data
+	 * "A8", "A7", and "A6" respectively. countDown("X",10,2,3) will
+	 * also prepend three nodes with "X10", "X7", and "X4".
+	 *
+	 * This method should conditionally yield after each node is inserted.
+	 * Print the list at the very end.
+	 *
+	 * Preconditions: from>=to and step>0
+	 *
+	 * @param label string that node data should start with
+	 * @param from integer to start at
+	 * @param to integer to end at
+	 * @param step subtract this from the current integer to get to the next integer
+	 */
+	public void countDown(String label, int from, int to, int step) {
+	    for (int i = from; i >= to; i -= step) {
+		String data = label + i;
+		sharedList.prepend(data);
+		yieldIfOughtTo();
+	    }
+	    // DLL_selfTest print at the end for testing
+	}
+	
+	public void run() {
+	    countDown(label, from, to, step);
+	}
+    }
 
     /**
      * Tests whether this module is working.
@@ -405,6 +466,69 @@ public class KThread {
 	
 	new KThread(new PingTest(1)).setName("forked thread").fork();
 	new PingTest(0).run();
+    }
+    
+    /**
+     * Tests the shared DLList by having two threads running countdown.
+     * One thread will insert even-numbered data from "A12" to "A2".
+     * The other thread will insert odd-numbered data from "B11" to "B1".
+     * Don't forget to initialize the oughtToYield array before forking.
+     *
+     */
+    public static void DLL_selfTest() {
+	oughtToYield = new boolean[100];
+	numTimesBefore = 0;
+	DLListTest.sharedList = new DLList();  // Reset the shared list
+
+    // // Thread B nodes at head, thread A at the tail
+    // oughtToYield[0] = false;   
+	// oughtToYield[1] = false;  
+	// oughtToYield[2] = false;   
+	// oughtToYield[3] = false;  
+	// oughtToYield[4] = false;  
+	// oughtToYield[5] = true;   
+	// oughtToYield[6] = false;   
+	// oughtToYield[7] = false;   
+	// oughtToYield[8] = false;   
+	// oughtToYield[9] = false;   
+	// oughtToYield[10] = false; 
+	// oughtToYield[11] = false; 
+    
+	
+	// Alternate between threads A and B to get sorted order
+	// oughtToYield[0] = true;   // A yields after A12
+	// oughtToYield[1] = true;   // B yields after B11
+	// oughtToYield[2] = true;   // A yields after A10
+	// oughtToYield[3] = true;   // B yields after B9
+	// oughtToYield[4] = true;   // A yields after A8
+	// oughtToYield[5] = true;   // B yields after B7
+	// oughtToYield[6] = true;   // A yields after A6
+	// oughtToYield[7] = true;   // B yields after B5
+	// oughtToYield[8] = true;   // A yields after A4
+	// oughtToYield[9] = true;   // B yields after B3
+	// oughtToYield[10] = false; // A doesn't yield after A2 (last A insertion)
+	// oughtToYield[11] = false; // B doesn't yield after B1 (last B insertion)
+
+    // two A nodes and 2 B nodes alternating
+    oughtToYield[0] = false;  // A doesn't yield after A12
+	oughtToYield[1] = true;   // A yields after A10 (2 A's done)
+	oughtToYield[2] = false;  // B doesn't yield after B11
+	oughtToYield[3] = true;   // B yields after B9 (2 B's done)
+	oughtToYield[4] = false;  // A doesn't yield after A8
+	oughtToYield[5] = true;   // A yields after A6 (2 A's done)
+	oughtToYield[6] = false;  // B doesn't yield after B7
+	oughtToYield[7] = true;   // B yields after B5 (2 B's done)
+	oughtToYield[8] = false;  // A doesn't yield after A4
+	oughtToYield[9] = false;  // A doesn't yield after A2 (last 2 A's)
+	oughtToYield[10] = false; // B doesn't yield after B3
+	oughtToYield[11] = false; // B doesn't yield after B1 (last 2 B's) 
+	
+	new KThread(new DLListTest("B", 11, 1, 2)).setName("odd thread").fork();
+	DLListTest testA = new DLListTest("A", 12, 2, 2);
+	testA.run();
+	
+	// Print the final list after both threads complete
+	System.out.println("Final list: " + DLListTest.sharedList.toString());
     }
 
     private static final char dbgThread = 't';
@@ -444,4 +568,7 @@ public class KThread {
     private static KThread currentThread = null;
     private static KThread toBeDestroyed = null;
     private static KThread idleThread = null;
+    
+    private static boolean[] oughtToYield = new boolean[100];
+    private static int numTimesBefore = 0;
 }
