@@ -240,6 +240,29 @@ public class KThread {
             numTimesBefore++;
         }
     }
+    
+    /**
+     * Given this unique location, yield the
+     * current thread if it ought to. It knows
+     * to do this if yieldData[loc][i] is true, where
+     * i is the number of times that this function
+     * has already been called from this location.
+     *
+     * @param loc unique location. Every call to
+     *            yieldIfShould that you
+     *            place in your DLList code should
+     *            have a different loc number.
+     */
+    public static void yieldIfShould(int loc) {
+        if (loc < yieldData.length && yieldCount[loc] < yieldData[loc].length) {
+            if (yieldData[loc][yieldCount[loc]]) {
+                yieldCount[loc]++;
+                KThread.yield();
+            } else {
+                yieldCount[loc]++;
+            }
+        }
+    }
 
     /**
      * Relinquish the CPU, because the current thread has either finished or it
@@ -469,6 +492,125 @@ public class KThread {
     }
     
     /**
+     * Demonstrates a FATAL concurrency error (NullPointerException).
+     * Creates an interleaving where prepend overwrites the first pointer
+     * while another thread is in the middle of modifying it.
+     */
+    public static void DLL_fatalErrorTest() {
+	// Reset yield mechanism
+	yieldData = new boolean[10][100];
+	yieldCount = new int[10];
+	
+	// Test class that removes and adds
+	class RemoveAndAdd implements Runnable {
+	    public void run() {
+		// Remove head
+		Object removed = DLListTest.sharedList.removeHead();
+		System.out.println("Thread B removed: " + removed);
+		// Add something back
+		DLListTest.sharedList.prepend("B-New");
+	    }
+	}
+	
+	// Test class that prepends multiple times
+	class MultiplePrepend implements Runnable {
+	    public void run() {
+		DLListTest.sharedList.prepend("A1");
+		// This second prepend will access first.prev which might be in bad state
+		DLListTest.sharedList.prepend("A2");
+	    }
+	}
+	
+	// Initialize with one element
+	DLListTest.sharedList = new DLList();
+	DLListTest.sharedList.prepend("Initial");
+	
+	System.out.println("Starting with: " + DLListTest.sharedList.toString());
+	
+	// Location 4: Thread A yields after setting next but before setting prev
+	yieldData[4][0] = true;  // First prepend of A yields here
+	
+	// Location 8: Thread B yields after updating first in removeHead
+	yieldData[8][0] = true;  // RemoveHead yields after changing first
+	
+	// Location 5: Thread A continues and will crash trying first.prev
+	// because first has been changed by Thread B
+	
+	new KThread(new RemoveAndAdd()).setName("Thread-B").fork();
+	
+	try {
+	    new MultiplePrepend().run();
+	    System.out.println("Final list: " + DLListTest.sharedList.toString());
+	} catch (NullPointerException e) {
+	    System.out.println("FATAL ERROR: NullPointerException occurred!");
+	    System.out.println("Stack trace:");
+	    e.printStackTrace();
+	    throw e;  // Re-throw to actually crash
+	}
+    }
+    
+    /**
+     * Demonstrates a NON-FATAL concurrency error that corrupts the list.
+     * The interleaving causes the size counter to be inconsistent and
+     * creates duplicate keys due to race conditions.
+     */
+    public static void DLL_corruptionTest() {
+	// Reset yield mechanism
+	yieldData = new boolean[10][100];
+	yieldCount = new int[10];
+	
+	// Test class that does both prepend and removeHead
+	class MixedOperations implements Runnable {
+	    private String label;
+	    private boolean doRemove;
+	    
+	    MixedOperations(String label, boolean doRemove) {
+		this.label = label;
+		this.doRemove = doRemove;
+	    }
+	    
+	    public void run() {
+		DLListTest.sharedList.prepend(label + "1");
+		if (doRemove && DLListTest.sharedList.size() > 0) {
+		    DLListTest.sharedList.removeHead();
+		}
+		DLListTest.sharedList.prepend(label + "2");
+	    }
+	}
+	
+	// Initialize empty list
+	DLListTest.sharedList = new DLList();
+	
+	// Location 0: After entering prepend - Thread A yields
+	yieldData[0][0] = true;  
+	
+	// Location 1: After reading key - Thread B yields  
+	yieldData[1][1] = true;
+	
+	// Location 2: After creating element - Thread A yields again
+	yieldData[2][2] = true;
+	
+	// Location 4: In non-empty branch - causes wrong pointer updates
+	yieldData[4][3] = true;
+	
+	// Location 5: After setting prev pointer
+	yieldData[5][4] = true;
+	
+	new KThread(new MixedOperations("B", true)).setName("Thread-B").fork();
+	new MixedOperations("A", false).run();
+	
+	System.out.println("\nFinal list (forward): " + DLListTest.sharedList.toString());
+	System.out.println("Final list (reverse): " + DLListTest.sharedList.reverseToString());
+	System.out.println("Size field says: " + DLListTest.sharedList.size());
+	
+	// Check for duplicate keys
+	String listStr = DLListTest.sharedList.toString();
+	if (listStr.contains("[0,") && listStr.indexOf("[0,") != listStr.lastIndexOf("[0,")) {
+	    System.out.println("CORRUPTION: Duplicate key 0 detected!");
+	}
+    }
+    
+    /**
      * Tests the shared DLList by having two threads running countdown.
      * One thread will insert even-numbered data from "A12" to "A2".
      * The other thread will insert odd-numbered data from "B11" to "B1".
@@ -571,4 +713,8 @@ public class KThread {
     
     private static boolean[] oughtToYield = new boolean[100];
     private static int numTimesBefore = 0;
+    
+    // New 2D yielding mechanism for fine-grained control
+    private static boolean[][] yieldData = new boolean[10][100];  // [location][count]
+    private static int[] yieldCount = new int[10];  // count for each location
 }

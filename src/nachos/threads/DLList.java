@@ -23,18 +23,24 @@ public class DLList
      */
     public void prepend(Object item) {
         int newKey = 0;
+        KThread.yieldIfShould(0);  
         if (this.first != null) {
             newKey = first.key - 1;
         }
+        KThread.yieldIfShould(1);  
         
         DLLElement newElement = new DLLElement(item, newKey);
         
+        KThread.yieldIfShould(2);  
         if (this.first == null) {  // Empty list
             this.first = newElement;
+            KThread.yieldIfShould(3);  
             this.last = newElement;
         } else {  // Non-empty list
             newElement.next = this.first;
+            KThread.yieldIfShould(4);  
             this.first.prev = newElement;
+            KThread.yieldIfShould(5); 
             this.first = newElement;
         }
         this.size++;
@@ -47,12 +53,15 @@ public class DLList
      * @return the data stored at the head of the list or null if list empty
      */
     public Object removeHead() {
+        KThread.yieldIfShould(6);  
         if (this.size() == 0) {
             return null;
         } else {
             Object dataItem = first.data;
+            KThread.yieldIfShould(7);  
             this.first = first.next;
             
+            KThread.yieldIfShould(8);  
             if (first != null) {
                 first.prev = null;
             } else {
