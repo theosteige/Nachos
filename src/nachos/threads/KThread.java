@@ -509,6 +509,7 @@ public class KThread {
 		System.out.println("Thread B removed: " + removed);
 		// Add something back
 		DLListTest.sharedList.prepend("B-New");
+		System.out.println(DLListTest.sharedList.toString());
 	    }
 	}
 	
@@ -539,6 +540,7 @@ public class KThread {
 	new KThread(new RemoveAndAdd()).setName("Thread-B").fork();
 	
 	try {
+		System.out.println(DLListTest.sharedList.toString());
 	    new MultiplePrepend().run();
 	    System.out.println("Final list: " + DLListTest.sharedList.toString());
 	} catch (NullPointerException e) {
@@ -575,6 +577,8 @@ public class KThread {
 		    DLListTest.sharedList.removeHead();
 		}
 		DLListTest.sharedList.prepend(label + "2");
+		System.out.println(DLListTest.sharedList.toString());
+		System.out.println(DLListTest.sharedList.size());
 	    }
 	}
 	
@@ -890,6 +894,146 @@ public class KThread {
             System.out.println("Test failed");
         }
 	   }
+
+    /**
+     * Tests the Condition2 implementation with interrupt-based synchronization.
+     * Verifies that sleep(), wake(), and wakeAll() work correctly.
+     */
+    public static void Condition2_Test() {
+        System.out.println("\n---Condition2 Implementation Test---");
+        System.out.println("Testing new condition variables");
+
+        final Lock lock = new Lock();
+        final Condition2 condition = new Condition2(lock);
+        final int[] sharedValue = new int[1];
+        final boolean[] finished = new boolean[3];
+
+        // Test wake() - wakes exactly one thread
+        class SingleWaiter implements Runnable {
+            private String name;
+            private int id;
+
+            SingleWaiter(String name, int id) {
+                this.name = name;
+                this.id = id;
+            }
+
+            public void run() {
+                lock.acquire();
+                System.out.println(name + " waiting on condition...");
+
+                // Wait for shared value to be set
+                while (sharedValue[0] == 0) {
+                    condition.sleep();  // Release lock, sleep, reacquire
+                }
+
+                System.out.println(name + " woke up! Shared value: " + sharedValue[0]);
+                finished[id] = true;
+                lock.release();
+            }
+        }
+
+        // Test wakeAll() - wakes all threads
+        class MultipleWaiter implements Runnable {
+            private String name;
+            private int waitFor;
+
+            MultipleWaiter(String name, int waitFor) {
+                this.name = name;
+                this.waitFor = waitFor;
+            }
+
+            public void run() {
+                lock.acquire();
+                System.out.println(name + " waiting for value " + waitFor);
+
+                while (sharedValue[0] < waitFor) {
+                    condition.sleep();
+                }
+
+                System.out.println(name + " proceeding with value: " + sharedValue[0]);
+                lock.release();
+            }
+        }
+
+        // Signaler thread that uses wake()
+        class Signaler implements Runnable {
+            public void run() {
+                // Let waiters start first
+                KThread.yield();
+                KThread.yield();
+
+                lock.acquire();
+                System.out.println("Signaler: Setting value to 1 and waking one thread");
+                sharedValue[0] = 1;
+                condition.wake();  // Wake only one thread
+                lock.release();
+
+                // Check how many threads woke up
+                KThread.yield();
+                KThread.yield();
+
+                int wokeCount = 0;
+                for (boolean f : finished) {
+                    if (f) wokeCount++;
+                }
+                System.out.println("Signaler: " + wokeCount + " thread(s) woke up after wake()");
+            }
+        }
+
+        // Broadcaster thread that uses wakeAll()
+        class Broadcaster implements Runnable {
+            public void run() {
+                // Let waiters start first
+                KThread.yield();
+                KThread.yield();
+                KThread.yield();
+
+                lock.acquire();
+                System.out.println("Broadcaster: Setting value to 5 and waking all threads");
+                sharedValue[0] = 5;
+                condition.wakeAll();  // Wake all threads
+                lock.release();
+            }
+        }
+
+        System.out.println("\n-- Testing wake() (single wake) --");
+        sharedValue[0] = 0;
+        finished[0] = finished[1] = finished[2] = false;
+
+        // Start 3 waiters
+        new KThread(new SingleWaiter("Waiter1", 0)).setName("Waiter1").fork();
+        new KThread(new SingleWaiter("Waiter2", 1)).setName("Waiter2").fork();
+        new KThread(new SingleWaiter("Waiter3", 2)).setName("Waiter3").fork();
+
+        // Start signaler
+        new KThread(new Signaler()).setName("Signaler").fork();
+
+        // Let test run
+        for (int i = 0; i < 10; i++) {
+            KThread.yield();
+        }
+
+        System.out.println("\n-- Testing wakeAll() (broadcast) --");
+        sharedValue[0] = 0;
+
+        // Start multiple waiters with different conditions
+        new KThread(new MultipleWaiter("WaiterA", 2)).setName("WaiterA").fork();
+        new KThread(new MultipleWaiter("WaiterB", 3)).setName("WaiterB").fork();
+        new KThread(new MultipleWaiter("WaiterC", 5)).setName("WaiterC").fork();
+
+        // Start broadcaster
+        new KThread(new Broadcaster()).setName("Broadcaster").fork();
+
+        // Let test run
+        for (int i = 0; i < 15; i++) {
+            KThread.yield();
+        }
+
+        System.out.println("\nCondition2 test completed");
+        System.out.println("If wake() woke exactly one thread and wakeAll() woke all threads,");
+        System.out.println("then the interrupt-based implementation is working correctly!");
+    }
 
     /**
      * Complex producer-consumer test with multiple threads.

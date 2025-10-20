@@ -6,14 +6,14 @@ public class DLList
     private DLLElement last;   // pointer to last node
     private int size;          // number of nodes in list
     private Lock lock;
-    private Condition listEmpty;
+    private Condition2 listEmpty;  // Changed to Condition2
 
     /**
      * Creates an empty sorted doubly-linked list.
-     */ 
+     */
     public DLList() {
         lock = new Lock();
-        listEmpty = new Condition(lock);
+        listEmpty = new Condition2(lock);  // Using Condition2
         this.size = 0;
         this.first = null;  // pointer to first node
         this.last = null;

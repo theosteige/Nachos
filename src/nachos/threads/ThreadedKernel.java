@@ -49,13 +49,23 @@ public class ThreadedKernel extends Kernel {
 	// KThread.selfTest();
 	// KThread.DLL_selfTest();  // Run our DLL test instead
 
-	// KThread.DLL_fatalErrorTest();     // Will cause NullPointerException
-	// KThread.DLL_corruptionTest();   // Will corrupt the list structure
+	System.out.println("=== Testing with Condition2 (interrupt-based) ===");
+	System.out.println("Note: All tests now use Condition2 instead of Condition\n");
 
-	// BoundedBuffer tests
-	KThread.BB_underflowTest();     // Test underflow protection
-	KThread.BB_overflowTest();       // Test overflow protection
-	KThread.BB_producerConsumerTest(); // Test producer-consumer scenario
+	// DLList tests (now using Condition2 via monitor)
+	System.out.println("--- DLList Tests (using Condition2) ---");
+	KThread.DLL_fatalErrorTest();     // Should work correctly with Condition2
+	KThread.DLL_corruptionTest();   // Should work correctly with Condition2
+
+	// BoundedBuffer tests (now using Condition2)
+	System.out.println("\n--- BoundedBuffer Tests (using Condition2) ---");
+	KThread.BB_underflowTest();     // Test underflow protection with Condition2
+	KThread.BB_overflowTest();       // Test overflow protection with Condition2
+	KThread.BB_producerConsumerTest(); // Test producer-consumer with Condition2
+
+	// Direct Condition2 test
+	System.out.println("\n--- Direct Condition2 Implementation Test ---");
+	KThread.Condition2_Test();       // Test interrupt-based condition variables directly
 
 	Semaphore.selfTest();
 	SynchList.selfTest();

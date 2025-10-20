@@ -8,8 +8,8 @@ public class BoundedBuffer {
     private int first;
     private int last;
     private Lock lock;
-    private Condition bufferEmpty;
-    private Condition bufferFull;
+    private Condition2 bufferEmpty;  // Changed to Condition2
+    private Condition2 bufferFull;   // Changed to Condition2
 
     public BoundedBuffer(int maxsize) {
         this.size = 0;
@@ -18,8 +18,8 @@ public class BoundedBuffer {
         this.maxSize = maxsize;
         this.buffer = new char[maxSize];
         lock = new Lock();
-        bufferEmpty = new Condition(lock);
-        bufferFull = new Condition(lock);
+        bufferEmpty = new Condition2(lock);  // Using Condition2
+        bufferFull = new Condition2(lock);   // Using Condition2
     }
     // Read a character from the buffer, blocking until there is a char
     // in the buffer to satisfy the request. Return the char read.
