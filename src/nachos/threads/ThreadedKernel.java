@@ -48,10 +48,15 @@ public class ThreadedKernel extends Kernel {
     public void selfTest() {
 	// KThread.selfTest();
 	// KThread.DLL_selfTest();  // Run our DLL test instead
-	
-	KThread.DLL_fatalErrorTest();     // Will cause NullPointerException
+
+	// KThread.DLL_fatalErrorTest();     // Will cause NullPointerException
 	// KThread.DLL_corruptionTest();   // Will corrupt the list structure
-	
+
+	// BoundedBuffer tests
+	KThread.BB_underflowTest();     // Test underflow protection
+	KThread.BB_overflowTest();       // Test overflow protection
+	KThread.BB_producerConsumerTest(); // Test producer-consumer scenario
+
 	Semaphore.selfTest();
 	SynchList.selfTest();
 	if (Machine.bank() != null) {
