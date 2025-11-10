@@ -336,14 +336,50 @@ public class UserProcess {
     }
 
     /**
-     * Handle the halt() system call. 
+     * Handle the halt() system call.
      */
     private int handleHalt() {
 
 	Machine.halt();
-	
+
 	Lib.assertNotReached("Machine.halt() did not halt machine!");
 	return 0;
+    }
+
+    /**
+     * See the full Javadocs in syscall.h.
+     * This version of handleWrite only handles printf!
+     */
+    private int handleWrite(int fileDescriptor, int bufferAddr, int count){
+	OpenFile file = UserKernel.console.openForWriting();
+	if (!(bufferAddr >= 0 && count >= 0)) {
+	    Lib.debug(dbgProcess, "bufferAddr and count should bigger then zero");
+	    return -1;
+	}
+	byte[] buf = new byte[count];
+	int length = readVirtualMemory(bufferAddr, buf, 0, count);
+	length = file.write(buf, 0, length);
+	return length;
+    }
+
+    /**
+     * See the full Javadocs in syscall.h.
+     * This version only handles reading from the console, not from any files!
+     */
+    private int handleRead(int fileDescriptor, int buffer, int count) {
+	OpenFile file = UserKernel.console.openForReading();
+	if (!(buffer >= 0 && count >= 0)) {
+	    Lib.debug(dbgProcess, "buffer and count should bigger then zero");
+	    return -1;
+	}
+	byte[] buf = new byte[count];
+	int length = file.read(buf, 0, count);
+	if (length == -1) {
+	    Lib.debug(dbgProcess, "Fail to read from file");
+	    return -1;
+	}
+	length = writeVirtualMemory(buffer, buf, 0, length);
+	return length;
     }
 
 
@@ -392,6 +428,11 @@ public class UserProcess {
 	case syscallHalt:
 	    return handleHalt();
 
+	case syscallRead:
+	    return handleRead(a0, a1, a2);
+
+	case syscallWrite:
+	    return handleWrite(a0, a1, a2);
 
 	default:
 	    Lib.debug(dbgProcess, "Unknown syscall " + syscall);

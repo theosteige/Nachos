@@ -10,7 +10,7 @@
             "request": "launch",
             "mainClass": "nachos.machine.Machine",
             "cwd": "/Users/theosteiger/CSC_335/theos_project/src/nachos/proj3",
-            "args": "-d ac -x halt.coff"
+            "args": "-d ac -x readTest.coff"
         }
     ]
 }
