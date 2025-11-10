@@ -9,7 +9,8 @@
             "name": "Launch Java Program",
             "request": "launch",
             "mainClass": "nachos.machine.Machine",
-            "cwd": "/Users/theosteiger/CSC_335/theos_project/src/nachos/proj0"
+            "cwd": "/Users/theosteiger/CSC_335/theos_project/src/nachos/proj3",
+            "args": "-d ac -x halt.coff"
         }
     ]
 }

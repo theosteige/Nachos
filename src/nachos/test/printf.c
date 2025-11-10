@@ -144,7 +144,8 @@ void vsprintf(char *s, char *format, va_list ap) {
     _vsprintf(s, format, ap);
 }
 
-static char vfprintfbuf[256];
+//static char vfprintfbuf[256];
+static char vfprintfbuf[4096];  // need a larger buffer to print large strings
 
 void vfprintf(int fd, char *format, va_list ap) {
     int len = _vsprintf(vfprintfbuf, format, ap);
