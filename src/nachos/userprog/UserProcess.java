@@ -1,10 +1,9 @@
 package nachos.userprog;
 
+import java.io.EOFException;
 import nachos.machine.*;
 import nachos.threads.*;
-import nachos.userprog.*;
 
-import java.io.EOFException;
 
 /**
  * Encapsulates the state of a user process that is not contained in its
@@ -132,15 +131,48 @@ public class UserProcess {
 	Lib.assertTrue(offset >= 0 && length >= 0 && offset+length <= data.length);
 
 	byte[] memory = Machine.processor().getMemory();
-	
-	// for now, just assume that virtual addresses equal physical addresses
-	if (vaddr < 0 || vaddr >= memory.length)
+
+	// invalid address
+	if (vaddr < 0)
 	    return 0;
 
-	int amount = Math.min(length, memory.length-vaddr);
-	System.arraycopy(memory, vaddr, data, offset, amount);
+	int totalRead = 0;
 
-	return amount;
+	// read data page by pgae
+	while (length > 0 && vaddr < numPages * pageSize) {
+	    int vpn = Processor.pageFromAddress(vaddr);
+	    int pageOffset = Processor.offsetFromAddress(vaddr);
+
+	    // invalid address
+	    if (vpn < 0 || vpn >= pageTable.length || pageTable[vpn] == null || !pageTable[vpn].valid) {
+		return totalRead;
+	    }
+
+	    int ppn = pageTable[vpn].ppn;
+
+	    // physical address
+	    int paddr = ppn * pageSize + pageOffset;
+
+	    // Calculate how much to read from this page
+	    int bytesInPage = pageSize - pageOffset;
+	    int amount = Math.min(length, bytesInPage);
+
+	    // Make sure we don't read past physical memory
+	    if (paddr < 0 || paddr >= memory.length || paddr + amount > memory.length) {
+		return totalRead;
+	    }
+
+	    // Get actual data from RAM
+	    System.arraycopy(memory, paddr, data, offset, amount);
+
+	    // Update counters
+	    totalRead += amount;
+	    vaddr += amount;
+	    offset += amount;
+	    length -= amount;
+	}
+
+	return totalRead;
     }
 
     /**
@@ -175,15 +207,53 @@ public class UserProcess {
 	Lib.assertTrue(offset >= 0 && length >= 0 && offset+length <= data.length);
 
 	byte[] memory = Machine.processor().getMemory();
-	
-	// for now, just assume that virtual addresses equal physical addresses
-	if (vaddr < 0 || vaddr >= memory.length)
-	    return 0;
 
-	int amount = Math.min(length, memory.length-vaddr);
-	System.arraycopy(data, offset, memory, vaddr, amount);
+	if (vaddr < 0)
+	    return 0; // invalid vaddr
 
-	return amount;
+	int totalWritten = 0;
+
+	// write data page by pgae
+	while (length > 0 && vaddr < numPages * pageSize) {
+	    int vpn = Processor.pageFromAddress(vaddr);
+	    int pageOffset = Processor.offsetFromAddress(vaddr);
+
+	    if (vpn < 0 || vpn >= pageTable.length || pageTable[vpn] == null || !pageTable[vpn].valid) {
+		return totalWritten; // Invalid page - stop writing
+	    }
+
+	    // Check if page is read-only
+	    if (pageTable[vpn].readOnly) {
+		return totalWritten;
+	    }
+
+	    int ppn = pageTable[vpn].ppn;
+	    int paddr = ppn * pageSize + pageOffset;
+
+	    // Calculate how much to write to this page (don't cross page boundary)
+	    int bytesInPage = pageSize - pageOffset;
+	    int amount = Math.min(length, bytesInPage);
+
+	    // Make sure we don't write past physical memory
+	    if (paddr < 0 || paddr >= memory.length || paddr + amount > memory.length) {
+		return totalWritten;
+	    }
+
+	    // Copy data to RAM
+	    System.arraycopy(data, offset, memory, paddr, amount);
+
+	    // Mark page as used and dirty
+	    pageTable[vpn].used = true;
+	    pageTable[vpn].dirty = true;
+
+	    // Update counters
+	    totalWritten += amount;
+	    vaddr += amount;
+	    offset += amount;
+	    length -= amount;
+	}
+
+	return totalWritten;
     }
 
     /**
@@ -288,21 +358,69 @@ public class UserProcess {
 	    return false;
 	}
 
-	// load sections
-	for (int s=0; s<coff.getNumSections(); s++) {
+	// Note: numPages already includes stack pages and argument page from load()
+	// Don't add them again!
+
+	// Allocate frames from the kernel's free frames list
+	int[] allocatedFrames = UserKernel.allocateFrames(numPages);
+	if (allocatedFrames == null) {
+	    coff.close();
+	    Lib.debug(dbgProcess, "\tunable to allocate " + numPages + " frames");
+	    return false;
+	}
+
+	// Create the page table
+	pageTable = new TranslationEntry[numPages];
+
+	// print allocated frames
+	System.out.println("Process allocated " + numPages + " pages:");
+	for (int i = 0; i < numPages; i++) {
+	    System.out.println("  Page " + i + " -> Frame " + allocatedFrames[i]);
+	}
+
+	// Load sections and create page table entries
+	int pageIndex = 0;
+
+	// First, load all the code/data sections
+	int sectionPages = 0;
+	for (int s = 0; s < coff.getNumSections(); s++) {
 	    CoffSection section = coff.getSection(s);
-	    
+	    sectionPages += section.getLength();
+
 	    Lib.debug(dbgProcess, "\tinitializing " + section.getName()
 		      + " section (" + section.getLength() + " pages)");
 
-	    for (int i=0; i<section.getLength(); i++) {
-		int vpn = section.getFirstVPN()+i;
+	    for (int i = 0; i < section.getLength(); i++) {
+		int vpn = section.getFirstVPN() + i;
+		int ppn = allocatedFrames[pageIndex];
 
-		// for now, just assume virtual addresses=physical addresses
-		section.loadPage(i, vpn);
+		// Create page table entry
+		boolean readOnly = section.isReadOnly();
+		pageTable[vpn] = new TranslationEntry(vpn, ppn, true, readOnly, false, false);
+
+		// Load the page into the allocated frame
+		section.loadPage(i, ppn);
+
+		pageIndex++;
 	    }
 	}
-	
+
+	// Create page table entries for stack pages
+	// Stack pages come after the code/data sections
+	for (int i = 0; i < stackPages; i++) {
+	    int vpn = sectionPages + i;
+	    int ppn = allocatedFrames[pageIndex];
+
+	    // Stack pages are not read-only
+	    pageTable[vpn] = new TranslationEntry(vpn, ppn, true, false, false, false);
+	    pageIndex++;
+	}
+
+	// Create page table entry for arguments page (last page)
+	int argVPN = numPages - 1;
+	int argPPN = allocatedFrames[pageIndex];
+	pageTable[argVPN] = new TranslationEntry(argVPN, argPPN, true, false, false, false);
+
 	return true;
     }
 
@@ -310,6 +428,23 @@ public class UserProcess {
      * Release any resources allocated by <tt>loadSections()</tt>.
      */
     protected void unloadSections() {
+	// Close the coff file if it's still open
+	if (coff != null) {
+	    coff.close();
+	    coff = null;
+	}
+
+	// Release all frames back to the free list
+	if (pageTable != null) {
+	    for (int i = 0; i < pageTable.length; i++) {
+		if (pageTable[i] != null && pageTable[i].valid) {
+		    // Release the physical frame back to the kernel
+		    UserKernel.releaseFrame(pageTable[i].ppn);
+		}
+	    }
+	    // Destroy the page table
+	    pageTable = null;
+	}
     }    
 
     /**
@@ -343,6 +478,21 @@ public class UserProcess {
 	Machine.halt();
 
 	Lib.assertNotReached("Machine.halt() did not halt machine!");
+	return 0;
+    }
+
+    /**
+     * Handle the exit() system call.
+     */
+    private int handleExit(int status) {
+	// Unload sections to free all allocated frames
+	unloadSections();
+
+	// If this is the last process, halt the machine
+	// For now, we'll just halt the machine after any exit
+	Machine.halt();
+
+	// This should never be reached
 	return 0;
     }
 
@@ -427,6 +577,9 @@ public class UserProcess {
 	switch (syscall) {
 	case syscallHalt:
 	    return handleHalt();
+
+	case syscallExit:
+	    return handleExit(a0);
 
 	case syscallRead:
 	    return handleRead(a0, a1, a2);

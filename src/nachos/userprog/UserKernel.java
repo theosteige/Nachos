@@ -2,7 +2,6 @@ package nachos.userprog;
 
 import nachos.machine.*;
 import nachos.threads.*;
-import nachos.userprog.*;
 
 /**
  * A kernel that can support multiple user processes.
@@ -23,7 +22,17 @@ public class UserKernel extends ThreadedKernel {
 	super.initialize(args);
 
 	console = new SynchConsole(Machine.console());
-	
+
+	// Initialize the free frames list with physical frames
+	freeFramesList = new DLList();
+	int numPhysPages = Machine.processor().getNumPhysPages();
+
+	// Add frames in reverse order to avoid direct page-to-frame mapping
+	// This ensures page 0 gets a high frame number, demonstrating relocation
+	for (int i = numPhysPages - 1; i >= 0; i--) {
+	    freeFramesList.prepend(i);
+	}
+
 	Machine.processor().setExceptionHandler(new Runnable() {
 		public void run() { exceptionHandler(); }
 	    });
@@ -107,8 +116,39 @@ public class UserKernel extends ThreadedKernel {
 	super.terminate();
     }
 
+    /**
+     * return a list of <requested> free frame numbers that can be used
+     * for a process
+     *
+     * @param requested number of free frames requested
+     * @return array of frame numbers that the process can use or null
+     * if request can't be completed
+     */
+    public static int[] allocateFrames(int requested) {
+	if (freeFramesList.size() < requested) {
+	    return null; // Not enough free frames
+	}
+
+	int[] frames = new int[requested];
+	for (int i = 0; i < requested; i++) {
+	    Integer frameNumber = (Integer) freeFramesList.removeHead();
+	    frames[i] = frameNumber;
+	}
+	return frames;
+    }
+
+    /**
+     * put frameNumber back in the free frames list
+     */
+    public static void releaseFrame(int frameNumber) {
+	freeFramesList.insert(frameNumber, frameNumber);
+    }
+
     /** Globally accessible reference to the synchronized console. */
     public static SynchConsole console;
+
+    /** List of free physical frames for paging */
+    private static DLList freeFramesList;
 
     // dummy variables to make javac smarter
     private static Coff dummy1 = null;
